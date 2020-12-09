@@ -18,7 +18,10 @@ import pymel.core.datatypes as dt
 import maya.cmds as cmds
 import math
 import random
+import os
 
+
+cmds.file(force=True, newFile=True)
 curves = []
 curvesStack = []
 directionStack = []
@@ -202,11 +205,42 @@ createLSystem(n, "F s", lSystem)
 createCurve(lSystem, n)
 createMesh(curves)
 
-pm.polyUnite(polys, name="TreePoly")
+TreePoly = pm.polyUnite(polys, name="TreePoly")
+
+# -----------------------Shader----------------------------------------------
 
 
-# print(pm.objectType("TreePoly"))
+def addTexture(obj, texturePathColor, texturePathBump):
+    objectName = obj[0]
+    shaderName = "shader"+objectName
+    fileTextureNameColor = "filePathImageColor"+objectName
+    fileTextureNameBump = "filePathImageBump"+objectName
+    uvImageName = "uvFileImage"+objectName
+
+    pm.shadingNode('phong', asShader=True, name=shaderName)
+    pm.shadingNode('file', asTexture=True, name=fileTextureNameColor)
+    pm.shadingNode('file', asTexture=True, name=fileTextureNameBump)
+    pm.shadingNode('bump2d', asTexture=True, name="bumpMap")
+
+    pm.connectAttr(fileTextureNameColor + '.outColor', shaderName + '.color')
+    pm.connectAttr(fileTextureNameBump + '.outAlpha', "bumpMap.bumpValue")
+    pm.connectAttr("bumpMap.outNormal", shaderName + '.normalCamera')
+
+    pm.setAttr(fileTextureNameColor+'.fileTextureName',
+               texturePathColor, type='string')
+    pm.setAttr(fileTextureNameBump+' .fileTextureName',
+               texturePathColor, type='string')
+
+    pm.select(objectName, replace=True)
+    pm.hyperShade(assign=shaderName)
+    pm.shadingNode('place2dTexture', asUtility=True, name=uvImageName)
+    pm.defaultNavigation(connectToExisting=True,
+                         source=uvImageName, destination=fileTextureNameColor)
+
+# ----------------------------------------------------------------------------
 
 
-# pm.circle(name="surface", nr=(0, 1, 0), c=(0, 0, 0), r=0.1)
-# pm.extrude('surface', "curve", et=2, scale=0.5)
+# Add textures folder to where script is being run from within maya
+dir_path = cmds.internalVar(userScriptDir=1)
+addTexture(TreePoly, dir_path + "/Shaders/TreeBark/color.tif",
+           dir_path + "Shaders/TreeBark/bump.tif")
