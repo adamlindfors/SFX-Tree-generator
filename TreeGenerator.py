@@ -3,7 +3,6 @@
 # TODO -----------------------------------------------------------
 # Fix holes in tree
 # Add leafs to tree
-# Add shader to tree
 # Add gui
 # Add different radius to tree
 # Fix different angles from the same branch
@@ -18,7 +17,6 @@ import pymel.core.datatypes as dt
 import maya.cmds as cmds
 import math
 import random
-import os
 
 
 cmds.file(force=True, newFile=True)
@@ -28,8 +26,9 @@ directionStack = []
 positionStack = []
 directions = []
 points = []
+leafs = []
 HEIGHT = 1
-count = 0
+leafCount = 0
 
 currentPos = dt.Vector(0, 0, 0)
 currentDir = dt.Vector(0, 1, 0)
@@ -42,11 +41,11 @@ points.append(currentPos)
 def applyRules(lhch):
     rhch = ""
     if(lhch == "F"):
-        rhch = "^F[&+F]F[->FL][&FB]"  # Rule 1
+        rhch = "^F[&+FL]F[->FL][&FLB]"  # Rule 1
     if(lhch == "-"):
-        rhch = "-"      # Rule 2
+        rhch = "-"
     if(lhch == "+"):
-        rhch = "+"      # Rule 3
+        rhch = "+"
     if(lhch == "<"):
         rhch = "<"
     if(lhch == ">"):
@@ -56,9 +55,11 @@ def applyRules(lhch):
     if(lhch == "&"):
         rhch = "&"
     if(lhch == "["):
-        rhch = "["      # Rule 4
+        rhch = "["
     if(lhch == "]"):
-        rhch = "]"      # Rule 5
+        rhch = "]"
+    if(lhch == "L"):
+        rhch = "L"
     if(lhch == "s"):
         rhch = "s"
 
@@ -68,7 +69,7 @@ def applyRules(lhch):
 
 
 def turtleInterpretation(ch):
-    global currentPos, currentDir, points
+    global currentPos, currentDir, points, leafCount
     if(ch == "F"):
         forwardStep()
         points.append(currentPos)
@@ -123,6 +124,15 @@ def turtleInterpretation(ch):
         points = curvesStack.pop()
         currentPos = positionStack.pop()
         currentDir = directionStack.pop()
+    if(ch == "L"):
+        createGeo("leaf", leafCount)
+        pm.select("leaf{}".format(leafCount) + ":pPlane1")
+        pm.move(currentPos.x, currentPos.y, currentPos.z)
+        pm.rotate("leaf{}".format(leafCount) + ":pPlane1", [str(random.randint(0, 90)) + "deg", str(
+            random.randint(0, 90)) + "deg", str(random.randint(0, 90)) + "deg"])
+        pm.scale(0.05, 0.05, 0.05)
+        leafs.append("leaf{}".format(leafCount) + ":pPlane1")
+        leafCount = leafCount+1
     if(ch == "s"):
         curves.append(points)
 
@@ -171,30 +181,36 @@ def forwardStep():
 
 
 def createCurve(arr, numIters):
-    global currentDir, currentPos, count
+    global currentDir, currentPos
     for ch in arr[numIters-1]:
         turtleInterpretation(ch)
 
 
-def numberScale(start, stop, i):
-    values = range(i)
+def createGeo(typeOfGeo, counter):
+    dir_path = cmds.internalVar(userScriptDir=1)
+    if(typeOfGeo == "leaf"):
+        cmds.file(dir_path+"/Objects/leaf_geo.mb", i=True,
+                  namespace='leaf{}'.format(counter))
+    if(typeOfGeo == "flower"):
+        flower = cmds.file(dir_path+"/Objects/blossom_geo.mb", i=True)
+        return flower
 
 
 def createMesh(crv):
     for i in range(len(crv)):
-        if(len(crv[i]) >= 6):
+        if(len(crv[i]) == 2):
             pm.curve(name="curve{}".format(i), p=crv[i], d=1)
             pm.circle(name="surface{}".format(i),
-                      nr=crv[i][1] - crv[i][0], c=crv[i][0], r=0.1)
+                      nr=crv[i][1] - crv[i][0], c=crv[i][0], r=random.uniform(0.01, 0.05))
             temp = pm.extrude("surface{}".format(i), "curve{}".format(
-                i), et=2, pivot=crv[i][0], scale=1, po=1)
+                i), et=2, pivot=crv[i][0], po=1)
             polys.append(temp)
         else:
             pm.curve(name="curve{}".format(i), p=crv[i], d=1)
-            pm.circle(name="surface{}".format(i),
-                      nr=crv[i][1] - crv[i][0], c=crv[i][0], r=0.03)
+            crl = pm.circle(name="surface{}".format(i),
+                            nr=crv[i][1] - crv[i][0], c=crv[i][0], r=0.1)
             temp = pm.extrude("surface{}".format(i), "curve{}".format(
-                i), et=2, pivot=crv[i][0], scale=1, po=1)
+                i), et=2, pivot=crv[i][0], scale=0.5, po=1)
             polys.append(temp)
 
 
@@ -206,26 +222,29 @@ createCurve(lSystem, n)
 createMesh(curves)
 
 TreePoly = pm.polyUnite(polys, name="TreePoly")
+LeafPoly = pm.polyUnite(leafs, name="LeafPoly")
 
 # -----------------------Shader----------------------------------------------
 
 
-def addTexture(obj, texturePathColor, texturePathBump):
+def createShader(obj, texturePathColor, texturePathBump):
     objectName = obj[0]
     shaderName = "shader"+objectName
     fileTextureNameColor = "filePathImageColor"+objectName
     fileTextureNameBump = "filePathImageBump"+objectName
     uvImageName = "uvFileImage"+objectName
 
-    pm.shadingNode('phong', asShader=True, name=shaderName)
+    pm.shadingNode('lambert', asShader=True, name=shaderName)
     pm.shadingNode('file', asTexture=True, name=fileTextureNameColor)
     pm.shadingNode('file', asTexture=True, name=fileTextureNameBump)
-    pm.shadingNode('bump2d', asTexture=True, name="bumpMap")
+    pm.shadingNode('bump2d', asTexture=True, name="bumpMap" + objectName)
 
     pm.connectAttr(fileTextureNameColor + '.outColor', shaderName + '.color')
-    pm.connectAttr(fileTextureNameBump + '.outAlpha', "bumpMap.bumpValue")
-    pm.connectAttr("bumpMap.outNormal", shaderName + '.normalCamera')
-
+    pm.connectAttr(fileTextureNameBump + '.outAlpha',
+                   "bumpMap" + objectName + ".bumpValue")
+    pm.connectAttr("bumpMap" + objectName + ".outNormal",
+                   shaderName + '.normalCamera')
+    cmds.setAttr(shaderName + ".ambientColor", 0.5, 0.5, 0.5)
     pm.setAttr(fileTextureNameColor+'.fileTextureName',
                texturePathColor, type='string')
     pm.setAttr(fileTextureNameBump+' .fileTextureName',
@@ -242,5 +261,9 @@ def addTexture(obj, texturePathColor, texturePathBump):
 
 # Add textures folder to where script is being run from within maya
 dir_path = cmds.internalVar(userScriptDir=1)
-addTexture(TreePoly, dir_path + "/Shaders/TreeBark/color.tif",
-           dir_path + "Shaders/TreeBark/bump.tif")
+createShader(TreePoly, dir_path + "/Shaders/TreeBark/color.tif",
+             dir_path + "Shaders/TreeBark/bump.tif")
+
+createShader(LeafPoly, dir_path + "/Shaders/Leaf/grass.tif",
+             dir_path + "Shaders/Leaf/Leaf_Ulmus_Bump.tga")
+# print(LeafPoly)
